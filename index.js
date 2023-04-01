@@ -9,15 +9,16 @@ const bcrypt=require("bcrypt")
 const booksSchema=require("./models/booksSchema")
 const bookingsSchema=require("./models/bookingsSchema")
 const verify=require("./verifyuser")
+const dotenv=require("dotenv");
+dotenv.config();
+const Base_URL=process.env.Base_URL;
 const sendMail=require("./nodemailer")
 const {registerValidation,loginValidation}=require("./validations/user_validations")
 app.use(cors())
 app.use(body_parser.json())
 app.use(body_parser.urlencoded({extended:false}))
 mongoose.set('strictQuery', true)
-const dotenv=require("dotenv")
-dotenv.config()
-mongoose.connect("mongodb://localhost:27017/se",{
+mongoose.connect(process.env.mongodb,{
     useNewUrlParser:true
 },()=>{
     console.log("DB CONNECTED")
@@ -32,14 +33,12 @@ app.post("/login",async(req,res)=>{
     try{
     //checking if email exists or  not
     const user_email_exist= await user_schema.findOne({email:req.body.email})
-    if(!user_email_exist) return res.status(400).send("User is not registered")
+    if(!user_email_exist) return res.status(400).send({message:"User is not registered"})
     //password validation
     const validPass=await bcrypt.compare(req.body.password,user_email_exist.password)
     if(!validPass) return res.send({message:"Invalid password!"})
     else{
-        const token=jwt.sign({_id:user_email_exist._id,email:user_email_exist.email},process.env.TOKEN_SECRET,{expiresIn:'1d'});
-        console.log({message:"Login Successfull",user:user_email_exist,token:token})
-        res.send({message:"Login Successfull",user:user_email_exist,token:token})
+        return res.send({message:"login successfull",user:user_email_exist})
     }}
     catch(err){
         res.send({message:err})
@@ -80,7 +79,7 @@ app.post("/forgotpassword",async(req,res)=>{
         }
         const secret=process.env.TOKEN_SECRET+isuser.password
         const token=jwt.sign({email:isuser.email},secret,{expiresIn:"5m"})
-        const link=`http://localhost:9002/reset-password/${isuser.email}/${token}`
+        const link=`${Base_URL}/${isuser.email}/${token}`
         const subject = "Reset Password"
         await sendMail(isuser.email,subject,link)
         return res.send({message:"Reset Password Mail sent"})
@@ -182,7 +181,7 @@ app.post("/booking/:id",async(req,res)=>{
         console.log(bookingnew)
         const a=await bookingnew.save()
         const b=await booksSchema.findOneAndUpdate({book_id:req.params.id},{$inc:{available_copies:-1}})
-        const c=await userschema.findOneAndUpdate({email:req.body.email},{$inc:{limit:-1}})
+        const c=await user_schema.findOneAndUpdate({email:req.body.email},{$inc:{limit:-1}})
         return res.send({message:"Your request for book has been recorded"})
     }
     else{
@@ -293,7 +292,7 @@ app.get("/return/:id",async(req,res)=>{
     await bookingsSchema.findByIdAndUpdate({_id:req.params.id},{returned_date:new Date()})
     const data=await bookingsSchema.findById({_id:req.params.id})
     const number=1
-    await userschema.findOneAndUpdate({email:data.email},{$inc:{limit:number}})
+    await user_schema.findOneAndUpdate({email:data.email},{$inc:{limit:number}})
     await booksSchema.findOneAndUpdate({book_id:data.book_id},{$inc:{available_copies:number}})
     return res.send({message:"Returned book is updated successfully"})
 })
